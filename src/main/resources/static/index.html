@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Prompt Interface</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #prompt-input { width: 100%; height: 100px; margin-bottom: 10px; }
+        #response-area { width: 100%; min-height: 200px; border: 1px solid #ccc; padding: 10px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<h1>LLM Prompt Interface</h1>
+<textarea id="prompt-input" placeholder="Enter your prompt here..."></textarea>
+<button id="send-button">Send</button>
+<div id="loading" style="display: none;">Processing...</div>
+<h3>Response:</h3>
+<div id="response-area"></div>
+
+<script>
+    document.getElementById('send-button').addEventListener('click', async () => {
+        const promptInput = document.getElementById('prompt-input');
+        const responseArea = document.getElementById('response-area');
+        const loadingElem = document.getElementById('loading');
+
+        // Get prompt text
+        const prompt = promptInput.value.trim();
+        if (!prompt) return;
+
+        // Clear previous response and show loading
+        responseArea.textContent = '';
+        loadingElem.style.display = 'block';
+
+        try {
+            // Send request to API
+            const response = await fetch('/prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt })
+            });
+
+            if (!response.ok) {
+                throw new Error('Server error: ' + response.status);
+            }
+
+            // Process streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                // Append new content to response area
+                const text = decoder.decode(value, { stream: true });
+                responseArea.textContent += text;
+            }
+
+        } catch (error) {
+            responseArea.textContent = 'Error: ' + error.message;
+        } finally {
+            loadingElem.style.display = 'none';
+        }
+    });
+</script>
+</body>
+</html>
