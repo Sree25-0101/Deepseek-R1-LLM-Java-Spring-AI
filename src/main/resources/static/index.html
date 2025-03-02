@@ -1,66 +1,108 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>LLM Prompt Interface</title>
+    <title>LLM Chat Interface</title>
     <style>
         body { font-family: Arial; max-width: 800px; margin: 0 auto; padding: 20px; }
-        #prompt-input { width: 100%; height: 100px; margin-bottom: 10px; }
-        #response-area { width: 100%; min-height: 200px; border: 1px solid #ccc; padding: 10px; white-space: pre-wrap; }
+        #chat-history { width: 100%; height: 300px; border: 1px solid #ccc; overflow-y: scroll; margin-bottom: 10px; padding: 10px; }
+        #prompt-input { width: 100%; height: 80px; margin-bottom: 10px; }
+        .user-message { background-color: #e6f7ff; padding: 8px; margin: 5px 0; border-radius: 5px; }
+        .assistant-message { background-color: #f0f0f0; padding: 8px; margin: 5px 0; border-radius: 5px; }
     </style>
 </head>
 <body>
-<h1>LLM Prompt Interface</h1>
-<textarea id="prompt-input" placeholder="Enter your prompt here..."></textarea>
+<h1>LLM Chat Interface</h1>
+<div id="chat-history"></div>
+<textarea id="prompt-input" placeholder="Enter your message here..."></textarea>
 <button id="send-button">Send</button>
-<div id="loading" style="display: none;">Processing...</div>
-<h3>Response:</h3>
-<div id="response-area"></div>
 
 <script>
-    document.getElementById('send-button').addEventListener('click', async () => {
-        const promptInput = document.getElementById('prompt-input');
-        const responseArea = document.getElementById('response-area');
-        const loadingElem = document.getElementById('loading');
+    // Store the session ID
+    let sessionId = localStorage.getItem('chatSessionId');
+    if (!sessionId) {
+        sessionId = Date.now().toString();
+        localStorage.setItem('chatSessionId', sessionId);
+    }
 
-        // Get prompt text
+    const chatHistory = document.getElementById('chat-history');
+    const promptInput = document.getElementById('prompt-input');
+    const sendButton = document.getElementById('send-button');
+
+    // Load previous chat history if any
+    async function loadChatHistory() {
+        try {
+            const response = await fetch(`/api/llm/history/${sessionId}`);
+            if (response.ok) {
+                const history = await response.json();
+                history.forEach(msg => {
+                    appendMessage(msg.role, msg.content);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load history:', error);
+        }
+    }
+
+    function appendMessage(role, content) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = role === 'user' ? 'user-message' : 'assistant-message';
+        messageDiv.textContent = content;
+        chatHistory.appendChild(messageDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    sendButton.addEventListener('click', async () => {
         const prompt = promptInput.value.trim();
         if (!prompt) return;
 
-        // Clear previous response and show loading
-        responseArea.textContent = '';
-        loadingElem.style.display = 'block';
+        // Clear input
+        promptInput.value = '';
+
+        // Display user message
+        appendMessage('user', prompt);
 
         try {
-            // Send request to API
+            // Send to backend
             const response = await fetch('/prompt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: prompt })
+                body: JSON.stringify({
+                    prompt: prompt,
+                    sessionId: sessionId
+                })
             });
 
             if (!response.ok) {
                 throw new Error('Server error: ' + response.status);
             }
 
+            // Create an element for assistant's response
+            const assistantMsg = document.createElement('div');
+            assistantMsg.className = 'assistant-message';
+            chatHistory.appendChild(assistantMsg);
+
             // Process streaming response
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let fullResponse = '';
 
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
 
-                // Append new content to response area
-                const text = decoder.decode(value, { stream: true });
-                responseArea.textContent += text;
+                const chunk = decoder.decode(value, { stream: true });
+                fullResponse += chunk;
+                assistantMsg.textContent = fullResponse;
+                chatHistory.scrollTop = chatHistory.scrollHeight;
             }
 
         } catch (error) {
-            responseArea.textContent = 'Error: ' + error.message;
-        } finally {
-            loadingElem.style.display = 'none';
+            appendMessage('assistant', 'Error: ' + error.message);
         }
     });
+
+    // Load chat history when page loads
+    loadChatHistory();
 </script>
 </body>
 </html>
