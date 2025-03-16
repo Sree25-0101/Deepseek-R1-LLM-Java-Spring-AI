@@ -8,6 +8,8 @@
         #prompt-input { width: 100%; height: 80px; margin-bottom: 10px; }
         .user-message { background-color: #e6f7ff; padding: 8px; margin: 5px 0; border-radius: 5px; }
         .assistant-message { background-color: #f0f0f0; padding: 8px; margin: 5px 0; border-radius: 5px; }
+        .thinking { color: #666; font-style: italic; margin-bottom: 10px; }
+        .response { margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -15,6 +17,18 @@
 <div id="chat-history"></div>
 <textarea id="prompt-input" placeholder="Enter your message here..."></textarea>
 <button id="send-button">Send</button>
+
+
+
+
+
+
+
+
+
+
+
+
 
 <script>
     // Store the session ID
@@ -41,14 +55,90 @@
         } catch (error) {
             console.error('Failed to load history:', error);
         }
+
+
     }
+
 
     function appendMessage(role, content) {
         const messageDiv = document.createElement('div');
         messageDiv.className = role === 'user' ? 'user-message' : 'assistant-message';
-        messageDiv.textContent = content;
+
+        if (role === 'assistant') {
+            // Process the content for <think> tags
+            const thinkPattern = /<think>([\s\S]*?)<\/think>/;
+            const match = content.match(thinkPattern);
+
+            if (match) {
+                const thinkContent = match[1];
+                const mainContent = content.replace(thinkPattern, '').trim();
+
+                // Create think section
+                const thinkSection = document.createElement('div');
+                thinkSection.className = 'thinking';
+                thinkSection.textContent = thinkContent;
+                messageDiv.appendChild(thinkSection);
+
+                // Create response section
+                const responseSection = document.createElement('div');
+                responseSection.className = 'response';
+                responseSection.textContent = mainContent;
+                messageDiv.appendChild(responseSection);
+            } else {
+                messageDiv.textContent = content;
+            }
+        } else {
+            messageDiv.textContent = content;
+
+
+        }
+
         chatHistory.appendChild(messageDiv);
         chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    function formatStreamingResponse(assistantMsg, content) {
+
+        // Process the content for <think> tags
+        const thinkStartIdx = content.indexOf('<think>');
+        const thinkEndIdx = content.indexOf('</think>');
+
+        // Clear the container
+        assistantMsg.innerHTML = '';
+
+        if (thinkStartIdx !== -1) {
+            let thinkContent = '';
+            let mainContent = '';
+
+            // If we have a complete <think> section
+            if (thinkEndIdx !== -1 && thinkEndIdx > thinkStartIdx) {
+                thinkContent = content.substring(thinkStartIdx + 7, thinkEndIdx);
+                mainContent = content.substring(thinkEndIdx + 8).trim();
+            } else {
+                // We only have the beginning of a <think> section
+                thinkContent = content.substring(thinkStartIdx + 7);
+            }
+
+            // Create think section
+            const thinkSection = document.createElement('div');
+            thinkSection.className = 'thinking';
+            thinkSection.textContent = thinkContent;
+            assistantMsg.appendChild(thinkSection);
+
+            // Create response section if we have main content
+            if (mainContent) {
+                const responseSection = document.createElement('div');
+                responseSection.className = 'response';
+                responseSection.textContent = mainContent;
+                assistantMsg.appendChild(responseSection);
+            }
+        } else {
+            // No <think> tag yet, just display the content
+            assistantMsg.textContent = content;
+        }
+
+
+
     }
 
     sendButton.addEventListener('click', async () => {
@@ -92,7 +182,7 @@
 
                 const chunk = decoder.decode(value, { stream: true });
                 fullResponse += chunk;
-                assistantMsg.textContent = fullResponse;
+                formatStreamingResponse(assistantMsg, fullResponse);
                 chatHistory.scrollTop = chatHistory.scrollHeight;
             }
 
@@ -103,6 +193,14 @@
 
     // Load chat history when page loads
     loadChatHistory();
+
+    // Allow enter key to send message
+    promptInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendButton.click();
+        }
+    });
 </script>
 </body>
 </html>
